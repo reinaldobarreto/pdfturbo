@@ -3,12 +3,12 @@ import path from "path";
 import multer from "multer";
 import { PDFDocument, degrees, PDFRawStream, PDFName, PDFDict, PDFArray, StandardFonts } from "pdf-lib";
 import sharp from "sharp";
+sharp.cache(false);
+sharp.concurrency(1);
 import JSZip from "jszip";
 
 import zlib from "zlib";
 import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const pdf = require('pdf-parse');
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import ExcelJS from "exceljs";
 import { Builder } from "xml2js";
@@ -93,14 +93,14 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
               }
 
               try {
-                console.log(`[V10.0] Otimizando imagem ${imageCount}...`);
+                if (!imageBuffer || imageBuffer.length < 100) continue;
+                
+                console.log(`[V10.0] Otimizando imagem ${imageCount} (${imageBuffer.length} bytes)...`);
                 const optimized = await sharp(imageBuffer)
-                  .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+                  .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
                   .jpeg({ 
-                    quality: 60,
-                    progressive: true,
-                    optimizeScans: true,
-                    mozjpeg: true
+                    quality: 50,
+                    progressive: true
                   })
                   .toBuffer();
 
@@ -147,7 +147,9 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
 
       // Salvar o documento ORIGINAL modificado
       console.log("[V10.0] Salvando PDF otimizado...");
-      const compressedPdfBytes = await pdfDoc.save();
+      const compressedPdfBytes = await pdfDoc.save({ 
+        useObjectStreams: false 
+      });
 
       console.log(`[V10.0] Finalizado: ${compressedPdfBytes.length} bytes (Redução: ${Math.round((1 - compressedPdfBytes.length / req.file.size) * 100)}%)`);
 
@@ -352,6 +354,8 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
 
       if (extension === 'pdf') {
         console.log("[V10.0] Extraindo texto de PDF...");
+        const require = createRequire(import.meta.url);
+        const pdf = require('pdf-parse');
         let text = "";
         try {
           const data = await pdf(req.file.buffer);
