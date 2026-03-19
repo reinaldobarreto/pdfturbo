@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import multer from "multer";
 import { PDFDocument, degrees, PDFRawStream, PDFName, PDFDict, PDFArray, StandardFonts } from "pdf-lib";
@@ -12,28 +11,29 @@ import { Document, Packer, Paragraph, TextRun } from "docx";
 import ExcelJS from "exceljs";
 import { Builder } from "xml2js";
 import mammoth from "mammoth";
+import cors from "cors";
 
-async function startServer() {
-  const app = express();
-  const PORT = process.env.PORT || 3000;
+const app = express();
 
-  const storage = multer.memoryStorage();
-  const upload = multer({ 
-    storage: storage,
-    limits: { fileSize: 100 * 1024 * 1024 }, // Aceita arquivos de até 100MB
-  });
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
-  
-  // Habilitar CORS para evitar problemas de conectividade
-  const cors = (await import('cors')).default;
-  app.use(cors());
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 100 * 1024 * 1024 }, // Aceita arquivos de até 100MB
+});
 
-  // --- Endpoints ---
+// --- Endpoints ---
 
-  // Otimização (Compressão) - MODO HACKER V10.0 (ULTRA FIDELITY + SMART COMPRESSION)
-  app.post("/api/optimize", upload.single("file"), async (req, res) => {
+// Health Check
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", message: "PDFTurbo API is running" });
+});
+
+// Otimização (Compressão) - MODO HACKER V10.0 (ULTRA FIDELITY + SMART COMPRESSION)
+app.post("/api/optimize", upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
       
@@ -511,14 +511,17 @@ async function startServer() {
     }
   });
 
-  // --- Configuração do Vite ---
-  if (process.env.NODE_ENV !== "production") {
+async function startServer() {
+  const PORT = process.env.PORT || 3000;
+
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
@@ -526,14 +529,18 @@ async function startServer() {
     });
   }
 
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`[PDFTurbo] Servidor rodando na porta ${PORT}`);
-    console.log(`[PDFTurbo] Rotas registradas:`);
-    console.log(` - POST /api/optimize`);
-    console.log(` - POST /api/merge`);
-    console.log(` - POST /api/split`);
-    console.log(` - POST /api/convert`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(Number(PORT), "0.0.0.0", () => {
+      console.log(`[PDFTurbo] Servidor rodando na porta ${PORT}`);
+      console.log(`[PDFTurbo] Rotas registradas:`);
+      console.log(` - POST /api/optimize`);
+      console.log(` - POST /api/merge`);
+      console.log(` - POST /api/split`);
+      console.log(` - POST /api/convert`);
+    });
+  }
 }
 
 startServer();
+
+export default app;
