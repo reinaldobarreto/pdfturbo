@@ -29,7 +29,15 @@ const upload = multer({
 
 // Health Check
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "PDFTurbo API is running" });
+  res.json({ 
+    status: "ok", 
+    message: "PDFTurbo API is running",
+    env: {
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL: process.env.VERCEL,
+      PORT: process.env.PORT
+    }
+  });
 });
 
 // Otimização (Compressão) - MODO HACKER V10.0 (ULTRA FIDELITY + SMART COMPRESSION)
@@ -349,7 +357,8 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
         console.log("[V10.0] Extraindo texto de PDF...");
         let text = "";
         try {
-          const data = await (pdf as any).default(req.file.buffer);
+          const pdfParser = (pdf as any).default || (pdf as any);
+          const data = await pdfParser(req.file.buffer);
           text = data.text || "";
           console.log(`[V10.0] Texto extraído (pdf-parse): ${text.length} caracteres`);
         } catch (pdfErr: any) {
@@ -511,6 +520,29 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
     }
   });
 
+// Catch-all para API para depuração
+app.all("/api/*", (req, res) => {
+  console.log(`[PDFTurbo] Rota não encontrada: ${req.method} ${req.path}`);
+  res.status(404).json({ 
+    error: "Rota da API não encontrada", 
+    path: req.path,
+    method: req.method,
+    availableRoutes: [
+      "/api/health",
+      "/api/optimize",
+      "/api/merge",
+      "/api/split",
+      "/api/convert"
+    ]
+  });
+});
+
+// Global Error Handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("[PDFTurbo] Erro global:", err);
+  res.status(500).json({ error: "Erro interno no servidor: " + (err.message || "Erro desconhecido") });
+});
+
 async function startServer() {
   const PORT = process.env.PORT || 3000;
 
@@ -529,7 +561,7 @@ async function startServer() {
     });
   }
 
-  if (!process.env.VERCEL) {
+  if (!process.env.VERCEL && (process.env.NODE_ENV !== "production" || process.env.START_SERVER === "true")) {
     app.listen(Number(PORT), "0.0.0.0", () => {
       console.log(`[PDFTurbo] Servidor rodando na porta ${PORT}`);
       console.log(`[PDFTurbo] Rotas registradas:`);
@@ -541,6 +573,11 @@ async function startServer() {
   }
 }
 
-startServer();
+// Apenas inicia se não estiver no Vercel ou se for o arquivo principal
+if (!process.env.VERCEL) {
+  startServer().catch(err => {
+    console.error("[PDFTurbo] Erro ao iniciar servidor:", err);
+  });
+}
 
 export default app;

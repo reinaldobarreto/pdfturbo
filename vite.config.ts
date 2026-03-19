@@ -10,6 +10,7 @@ export default defineConfig(({mode}) => {
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || ''),
       'process.env.APP_URL': JSON.stringify(env.APP_URL || env.VITE_APP_URL || ''),
+      'process.env.VERCEL': JSON.stringify(env.VERCEL || ''),
     },
     resolve: {
       alias: {

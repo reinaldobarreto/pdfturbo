@@ -1105,7 +1105,8 @@ export default function App() {
  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
  const selectedFiles = Array.from(e.target.files || []) as File[];
  
- const MAX_SIZE = 100 * 1024 * 1024; // 100MB
+ const isVercel = (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) || process.env.VERCEL === '1';
+  const MAX_SIZE = isVercel ? 4.5 * 1024 * 1024 : 100 * 1024 * 1024; // Vercel has 4.5MB limit
  
  const validFiles = selectedFiles.filter(f => {
  const extension = f.name.split('.').pop()?.toLowerCase();
