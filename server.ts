@@ -6,7 +6,7 @@ import sharp from "sharp";
 import JSZip from "jszip";
 
 import zlib from "zlib";
-import * as pdf from 'pdf-parse';
+import pdf from 'pdf-parse';
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import ExcelJS from "exceljs";
 import { Builder } from "xml2js";
@@ -68,37 +68,30 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
             imageCount++;
             try {
               const filter = dict.get(PDFName.of('Filter'));
+              let imageBuffer = obj.contents;
+
+              // V10.0: Só otimizamos imagens que já estão em JPEG (DCTDecode)
+              // Otimizar FlateDecode (raw) exigiria saber o ColorSpace e BitsPerComponent
+              const isDCT = filter === PDFName.of('DCTDecode') || 
+                           (filter instanceof PDFArray && filter.asArray().some(f => f === PDFName.of('DCTDecode')));
+
+              if (!isDCT) {
+                continue; 
+              }
+
               const width = dict.get(PDFName.of('Width'));
               const height = dict.get(PDFName.of('Height'));
               
               const w = typeof width === 'object' && 'value' in width ? (width as any).value : Number(width);
               const h = typeof height === 'object' && 'value' in height ? (height as any).value : Number(height);
 
-              let imageBuffer = obj.contents;
-
               // PROTEÇÃO ABSOLUTA: Logos, QR Codes e Códigos de Barras
-              // Se a imagem for pequena ou tiver proporções típicas de códigos, não tocamos nela.
-              if (w < 500 && h < 500) {
+              if (w < 400 && h < 400) {
                 continue; 
               }
 
-              let processedBuffer = imageBuffer;
-              const isFlate = filter === PDFName.of('FlateDecode') || 
-                             (filter instanceof PDFArray && filter.asArray().some(f => f === PDFName.of('FlateDecode')));
-
-              if (isFlate) {
-                try {
-                  processedBuffer = zlib.inflateSync(imageBuffer);
-                } catch (e) { 
-                  processedBuffer = imageBuffer;
-                }
-              }
-
               try {
-                const sharpInstance = sharp(processedBuffer);
-                
-                // Otimização de Alta Fidelidade: Mantém cores, alinhamento e nitidez
-                const optimized = await sharpInstance
+                const optimized = await sharp(imageBuffer)
                   .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
                   .jpeg({ 
                     quality: 60, // Qualidade aumentada para garantir fidelidade absoluta
@@ -147,9 +140,7 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
 
       // Salvar o documento ORIGINAL modificado
       const compressedPdfBytes = await pdfDoc.save({ 
-        useObjectStreams: true,
-        addDefaultPage: false,
-        updateFieldAppearances: false
+        useObjectStreams: true
       });
 
       console.log(`[V10.0] Finalizado: ${compressedPdfBytes.length} bytes (Redução: ${Math.round((1 - compressedPdfBytes.length / req.file.size) * 100)}%)`);
@@ -357,8 +348,7 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
         console.log("[V10.0] Extraindo texto de PDF...");
         let text = "";
         try {
-          const pdfParser = (pdf as any).default || (pdf as any);
-          const data = await pdfParser(req.file.buffer);
+          const data = await pdf(req.file.buffer);
           text = data.text || "";
           console.log(`[V10.0] Texto extraído (pdf-parse): ${text.length} caracteres`);
         } catch (pdfErr: any) {
