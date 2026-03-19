@@ -5,6 +5,7 @@ import { PDFDocument, degrees, PDFRawStream, PDFName, PDFDict, PDFArray, PDFNumb
 import sharp from "sharp";
 sharp.cache(false);
 sharp.concurrency(1);
+sharp.simd(false);
 import JSZip from "jszip";
 
 import zlib from "zlib";
@@ -43,16 +44,19 @@ app.get("/api/health", (req: Request, res: Response) => {
 });
 
 // Otimização (Compressão) - MODO HACKER V10.0 (ULTRA FIDELITY + SMART COMPRESSION)
+// Otimização (Compressão) - MODO HACKER V10.0 (ULTRA FIDELITY + SMART COMPRESSION)
 app.post("/api/optimize", upload.single("file"), async (req: Request, res: Response) => {
     try {
       if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
       
       console.log(`[V10.0] Iniciando compressão inteligente: ${req.file.originalname} (${req.file.size} bytes)`);
       
-      // Carregar o PDF original (vamos modificar este objeto diretamente para garantir ordem e alinhamento)
-      const pdfDoc = await PDFDocument.load(req.file.buffer, { ignoreEncryption: true });
+      // Carregar o PDF original
+      const pdfDoc = await PDFDocument.load(req.file.buffer, { 
+        ignoreEncryption: true,
+        updateMetadata: false
+      });
 
-      // V10.0: Limpeza de Metadados Básicos (sem remover XMP para evitar quebra de estrutura)
       pdfDoc.setProducer('PDFTURBO V10.0');
       pdfDoc.setCreator('PDFTURBO V10.0');
 
@@ -61,20 +65,27 @@ app.post("/api/optimize", upload.single("file"), async (req: Request, res: Respo
       let imageCount = 0;
       let optimizedCount = 0;
       
+      // Limite de processamento para evitar timeout em serverless
+      let processedImages = 0;
+      const MAX_IMAGES = 50;
+
       for (const [ref, obj] of indirectObjects) {
+        if (processedImages >= MAX_IMAGES) break;
+
         if (obj instanceof PDFRawStream) {
           const dict = obj.dict;
           const subtype = dict.lookup(PDFName.of('Subtype'));
           
           if (subtype === PDFName.of('Image')) {
             imageCount++;
+            processedImages++;
             try {
               const filter = dict.lookup(PDFName.of('Filter'));
               const imageBuffer = obj.contents;
 
-              if (!imageBuffer || imageBuffer.length < 100) continue;
+              if (!imageBuffer || imageBuffer.length < 512) continue;
 
-              // V10.0: Só otimizamos imagens que já estão em JPEG (DCTDecode)
+              // DCTDecode = JPEG
               const isDCT = filter === PDFName.of('DCTDecode') || 
                            (filter instanceof PDFArray && filter.asArray().some(f => f === PDFName.of('DCTDecode')));
 
@@ -85,34 +96,25 @@ app.post("/api/optimize", upload.single("file"), async (req: Request, res: Respo
               
               let w = 0;
               let h = 0;
+              if (width instanceof PDFNumber) w = width.asNumber();
+              else if (typeof width === 'number') w = width;
 
-              if (width instanceof PDFNumber) {
-                w = width.asNumber();
-              } else if (typeof width === 'number') {
-                w = width;
-              }
+              if (height instanceof PDFNumber) h = height.asNumber();
+              else if (typeof height === 'number') h = height;
 
-              if (height instanceof PDFNumber) {
-                h = height.asNumber();
-              } else if (typeof height === 'number') {
-                h = height;
-              }
-
-              // PROTEÇÃO ABSOLUTA: Logos, QR Codes e Códigos de Barras
-              if (w > 0 && h > 0 && w < 400 && h < 400) continue; 
+              // Proteção para logos e QR codes
+              if (w > 0 && h > 0 && w < 300 && h < 300) continue; 
 
               try {
-                console.log(`[V10.0] Otimizando imagem ${imageCount} (${imageBuffer.length} bytes)...`);
                 const optimized = await sharp(imageBuffer)
-                  .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+                  .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
                   .jpeg({ 
-                    quality: 50,
-                    progressive: true
+                    quality: 60,
+                    progressive: true,
+                    chromaSubsampling: '4:2:0'
                   })
                   .toBuffer();
 
-                console.log(`[V10.0] Imagem ${imageCount} otimizada: ${imageBuffer.length} -> ${optimized.length}`);
-                
                 if (optimized.length < imageBuffer.length * 0.9) {
                   const newDict = dict.clone();
                   newDict.set(PDFName.of('Length'), context.obj(optimized.length));
@@ -123,7 +125,7 @@ app.post("/api/optimize", upload.single("file"), async (req: Request, res: Respo
                   optimizedCount++;
                 }
               } catch (sharpError: any) {
-                console.error(`[V10.0] Erro ao otimizar imagem ${imageCount}:`, sharpError.message);
+                // Silenciosamente ignora falhas no sharp para uma imagem específica
               }
             } catch (e) {}
           }
@@ -132,13 +134,12 @@ app.post("/api/optimize", upload.single("file"), async (req: Request, res: Respo
 
       console.log(`[V10.0] Imagens: ${imageCount}, Otimizadas: ${optimizedCount}`);
 
-      // Salvar o documento ORIGINAL modificado
-      console.log("[V10.0] Salvando PDF otimizado...");
+      // Salvar o documento
       const compressedPdfBytes = await pdfDoc.save({ 
-        useObjectStreams: false 
+        useObjectStreams: true 
       });
 
-      console.log(`[V10.0] Finalizado: ${compressedPdfBytes.length} bytes (Redução: ${Math.round((1 - compressedPdfBytes.length / req.file.size) * 100)}%)`);
+      console.log(`[V10.0] Finalizado: ${compressedPdfBytes.length} bytes`);
 
       res.status(200);
       res.setHeader("Content-Type", "application/pdf");
@@ -148,7 +149,7 @@ app.post("/api/optimize", upload.single("file"), async (req: Request, res: Respo
       res.send(Buffer.from(compressedPdfBytes));
     } catch (error: any) {
       console.error("[V10.0] Erro crítico na rota optimize:", error);
-      res.status(500).json({ error: "Falha no motor V10.0: " + error.message });
+      res.status(500).json({ error: "Falha no motor V10.0: " + (error.message || "Erro interno") });
     }
   });
 
@@ -225,7 +226,7 @@ app.post("/api/optimize", upload.single("file"), async (req: Request, res: Respo
               .rotate() // Auto-orientar imagem baseada no EXIF
               .flatten({ background: { r: 255, g: 255, b: 255 } }) // Fundo branco para transparência em PNG
               .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
-              .jpeg({ quality: 85, progressive: true, mozjpeg: true }) // Qualidade aumentada para 85
+              .jpeg({ quality: 80, progressive: true }) // Removido mozjpeg: true para evitar crash em ambientes sem suporte
               .toBuffer();
 
             const image = await mergedPdf.embedJpg(optimizedImageBuffer);
