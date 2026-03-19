@@ -6,7 +6,9 @@ import sharp from "sharp";
 import JSZip from "jszip";
 
 import zlib from "zlib";
-import pdf from 'pdf-parse';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdf = require('pdf-parse');
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import ExcelJS from "exceljs";
 import { Builder } from "xml2js";
@@ -91,16 +93,19 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
               }
 
               try {
+                console.log(`[V10.0] Otimizando imagem ${imageCount}...`);
                 const optimized = await sharp(imageBuffer)
                   .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
                   .jpeg({ 
-                    quality: 60, // Qualidade aumentada para garantir fidelidade absoluta
+                    quality: 60,
                     progressive: true,
                     optimizeScans: true,
                     mozjpeg: true
                   })
                   .toBuffer();
 
+                console.log(`[V10.0] Imagem ${imageCount} otimizada: ${imageBuffer.length} -> ${optimized.length}`);
+                
                 // Só aplicamos se a redução for realmente vantajosa (> 10%)
                 if (optimized.length < imageBuffer.length * 0.9) {
                   const newDict = dict.clone();
@@ -111,7 +116,9 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
                   context.assign(ref, PDFRawStream.of(newDict, optimized));
                   optimizedCount++;
                 }
-              } catch (sharpError) {}
+              } catch (sharpError: any) {
+                console.error(`[V10.0] Erro ao otimizar imagem ${imageCount}:`, sharpError.message);
+              }
             } catch (e) {}
           } else {
             // Compressão de streams de conteúdo (texto/vetores) - SEMPRE LOSSLESS
@@ -139,9 +146,8 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
       console.log(`[V10.0] Imagens: ${imageCount}, Otimizadas: ${optimizedCount}`);
 
       // Salvar o documento ORIGINAL modificado
-      const compressedPdfBytes = await pdfDoc.save({ 
-        useObjectStreams: true
-      });
+      console.log("[V10.0] Salvando PDF otimizado...");
+      const compressedPdfBytes = await pdfDoc.save();
 
       console.log(`[V10.0] Finalizado: ${compressedPdfBytes.length} bytes (Redução: ${Math.round((1 - compressedPdfBytes.length / req.file.size) * 100)}%)`);
 

@@ -1264,8 +1264,18 @@ export default function App() {
  if (!response.ok) {
  let errorMsg = 'Erro no processamento';
  try {
- const errData = await response.json();
+ const text = await response.text();
+ try {
+ const errData = JSON.parse(text);
  errorMsg = errData.error || errorMsg;
+ } catch (e) {
+ if (text.includes('<title>')) {
+ const titleMatch = text.match(/<title>(.*?)<\/title>/);
+ errorMsg = titleMatch ? `Erro do Servidor: ${titleMatch[1]}` : `Erro HTTP ${response.status}`;
+ } else {
+ errorMsg = text.substring(0, 100) || `Erro HTTP ${response.status}`;
+ }
+ }
  } catch (e) {
  errorMsg = `Erro HTTP ${response.status}: ${response.statusText}`;
  }
