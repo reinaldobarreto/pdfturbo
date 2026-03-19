@@ -1491,7 +1491,7 @@ export default function App() {
  isVisible={showGuidance && currentFiles.length === 0} 
  onClose={() => setShowGuidance(false)}
  message={
- activeTab === 'optimize' ? "V10.0: Comprima arquivos grandes para o alvo de 2MB com Ultra Fidelidade e cores preservadas." :
+ activeTab === 'optimize' ? "V10.0: Otimize o tamanho do seu PDF mantendo a máxima qualidade visual e fidelidade de cores." :
  activeTab === 'merge' ? "V10.0: Una documentos e imagens (RG/CPF) com Smart Scaling automático para A4 sem deformação." :
  activeTab === 'split' ? "V10.0: Separe cada página do seu PDF em arquivos individuais com opção de renomear." :
  "V10.0: Converta PDFs para Word, Excel, CSV ou XML e vice-versa com preservação de estrutura."
@@ -1525,7 +1525,7 @@ export default function App() {
  ? 'Selecione um PDF para separar cada página individualmente'
  : activeTab === 'convert'
  ? 'Selecione um arquivo para converter para outro formato'
- : 'Selecione um PDF grande para comprimir para o alvo de 2MB'}
+ : 'Selecione um PDF para otimizar o tamanho mantendo a qualidade'}
  </p>
  <input 
  type="file" 
@@ -1749,7 +1749,7 @@ export default function App() {
  >
  <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
  <Zap className="w-6 h-6 animate-pulse" />
- <span className="relative z-10">OTIMIZAR V10.0 (ALVO 2MB)</span>
+ <span className="relative z-10">OTIMIZAR V10.0 (ALTA COMPRESSÃO)</span>
  </button>
  <div className="p-4 bg-black/40 border border-cyan-500/30 rounded-none backdrop-blur-md relative overflow-hidden">
  <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500" />
@@ -1928,19 +1928,15 @@ export default function App() {
  <p className="text-[10px] font-montserrat font-bold text-white/40 uppercase mb-1">Tamanho Final</p>
  <p className={cn(
  "text-xl font-montserrat font-bold transition-colors",
- currentResult.compressedSize <= 2 * 1024 * 1024 ? "text-emerald-400" : "text-cyan-400"
+ currentResult.compressedSize < currentResult.originalSize ? "text-emerald-400" : "text-cyan-400"
  )}>
  {formatBytes(currentResult.compressedSize)}
  </p>
- {currentResult.compressedSize > 2 * 1024 * 1024 ? (
- <p className="text-[8px] text-amber-500 font-montserrat mt-1 uppercase tracking-tighter animate-pulse">
- Alvo de 2MB não atingido: Otimização crítica aplicada
- </p>
- ) : (
  <p className="text-[8px] text-emerald-400 font-montserrat mt-1 uppercase tracking-tighter">
- Alvo de 2MB atingido: Otimização concluída
+ {currentResult.compressedSize < currentResult.originalSize 
+ ? `Otimização concluída: Redução de ${formatBytes(currentResult.originalSize - currentResult.compressedSize)}`
+ : 'Otimização concluída: Arquivo já estava no tamanho ideal'}
  </p>
- )}
  </div>
  <div className="bg-cyan-500/20 p-4 rounded-none border border-cyan-500/30 ">
  <p className="text-[10px] font-montserrat font-bold text-cyan-400/60 uppercase mb-1">Economia</p>

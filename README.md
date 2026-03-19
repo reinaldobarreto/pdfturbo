@@ -40,9 +40,9 @@ O PDFTurbo possui uma interface intuitiva e futurista, dividida em módulos espe
 
 ### 2. Header e Guia de Navegação
 ![Header](https://raw.githubusercontent.com/seu-usuario/pdfturbo/main/screenshots/header.png)
-*Identidade visual "TURBO" com popups informativos. Exemplo: "V10.0: Comprima arquivos grandes para o alvo de 2MB com ultra fidelidade e cores preservadas."*
+*Identidade visual "TURBO" com popups informativos. Exemplo: "V10.0: Otimize o tamanho do seu PDF mantendo a máxima qualidade visual e fidelidade de cores."*
 
-### 3. Otimização V10.0 (Alvo 2MB)
+### 3. Otimização V10.0 (Alta Compressão)
 ![Otimizar](https://raw.githubusercontent.com/seu-usuario/pdfturbo/main/screenshots/optimize.png)
 *Módulo de compressão agressiva com o motor "Hacker V10.0". Utiliza downsampling de 800px e quantização Trellis com mozjpeg para reduzir o peso binário mantendo a validade jurídica total.*
 

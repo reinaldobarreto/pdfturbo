@@ -1,7 +1,7 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import path from "path";
 import multer from "multer";
-import { PDFDocument, degrees, PDFRawStream, PDFName, PDFDict, PDFArray, StandardFonts } from "pdf-lib";
+import { PDFDocument, degrees, PDFRawStream, PDFName, PDFDict, PDFArray, PDFNumber, StandardFonts } from "pdf-lib";
 import sharp from "sharp";
 sharp.cache(false);
 sharp.concurrency(1);
@@ -30,7 +30,7 @@ const upload = multer({
 // --- Endpoints ---
 
 // Health Check
-app.get("/api/health", (req, res) => {
+app.get("/api/health", (req: Request, res: Response) => {
   res.json({ 
     status: "ok", 
     message: "PDFTurbo API is running",
@@ -43,7 +43,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // Otimização (Compressão) - MODO HACKER V10.0 (ULTRA FIDELITY + SMART COMPRESSION)
-app.post("/api/optimize", upload.single("file"), async (req, res) => {
+app.post("/api/optimize", upload.single("file"), async (req: Request, res: Response) => {
     try {
       if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
       
@@ -64,37 +64,44 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
       for (const [ref, obj] of indirectObjects) {
         if (obj instanceof PDFRawStream) {
           const dict = obj.dict;
-          const subtype = dict.get(PDFName.of('Subtype'));
+          const subtype = dict.lookup(PDFName.of('Subtype'));
           
           if (subtype === PDFName.of('Image')) {
             imageCount++;
             try {
-              const filter = dict.get(PDFName.of('Filter'));
-              let imageBuffer = obj.contents;
+              const filter = dict.lookup(PDFName.of('Filter'));
+              const imageBuffer = obj.contents;
+
+              if (!imageBuffer || imageBuffer.length < 100) continue;
 
               // V10.0: Só otimizamos imagens que já estão em JPEG (DCTDecode)
-              // Otimizar FlateDecode (raw) exigiria saber o ColorSpace e BitsPerComponent
               const isDCT = filter === PDFName.of('DCTDecode') || 
                            (filter instanceof PDFArray && filter.asArray().some(f => f === PDFName.of('DCTDecode')));
 
-              if (!isDCT) {
-                continue; 
+              if (!isDCT) continue; 
+
+              const width = dict.lookup(PDFName.of('Width'));
+              const height = dict.lookup(PDFName.of('Height'));
+              
+              let w = 0;
+              let h = 0;
+
+              if (width instanceof PDFNumber) {
+                w = width.asNumber();
+              } else if (typeof width === 'number') {
+                w = width;
               }
 
-              const width = dict.get(PDFName.of('Width'));
-              const height = dict.get(PDFName.of('Height'));
-              
-              const w = typeof width === 'object' && 'value' in width ? (width as any).value : Number(width);
-              const h = typeof height === 'object' && 'value' in height ? (height as any).value : Number(height);
+              if (height instanceof PDFNumber) {
+                h = height.asNumber();
+              } else if (typeof height === 'number') {
+                h = height;
+              }
 
               // PROTEÇÃO ABSOLUTA: Logos, QR Codes e Códigos de Barras
-              if (w < 400 && h < 400) {
-                continue; 
-              }
+              if (w > 0 && h > 0 && w < 400 && h < 400) continue; 
 
               try {
-                if (!imageBuffer || imageBuffer.length < 100) continue;
-                
                 console.log(`[V10.0] Otimizando imagem ${imageCount} (${imageBuffer.length} bytes)...`);
                 const optimized = await sharp(imageBuffer)
                   .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
@@ -106,7 +113,6 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
 
                 console.log(`[V10.0] Imagem ${imageCount} otimizada: ${imageBuffer.length} -> ${optimized.length}`);
                 
-                // Só aplicamos se a redução for realmente vantajosa (> 10%)
                 if (optimized.length < imageBuffer.length * 0.9) {
                   const newDict = dict.clone();
                   newDict.set(PDFName.of('Length'), context.obj(optimized.length));
@@ -118,25 +124,6 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
                 }
               } catch (sharpError: any) {
                 console.error(`[V10.0] Erro ao otimizar imagem ${imageCount}:`, sharpError.message);
-              }
-            } catch (e) {}
-          } else {
-            // Compressão de streams de conteúdo (texto/vetores) - SEMPRE LOSSLESS
-            try {
-              const contents = obj.contents;
-              const filter = dict.get(PDFName.of('Filter'));
-              
-              // Se já estiver comprimido com Flate, não re-comprimimos para evitar overhead
-              if (filter === PDFName.of('FlateDecode')) continue;
-
-              if (contents.length > 100) { 
-                const compressed = zlib.deflateSync(contents, { level: 9 });
-                if (compressed.length < contents.length) {
-                  const newDict = dict.clone();
-                  newDict.set(PDFName.of('Length'), context.obj(compressed.length));
-                  newDict.set(PDFName.of('Filter'), PDFName.of('FlateDecode'));
-                  context.assign(ref, PDFRawStream.of(newDict, compressed));
-                }
               }
             } catch (e) {}
           }
@@ -166,7 +153,7 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
   });
 
   // Merge (Unir) - MODO HACKER V10.0 (SMART SCALING + FIDELITY)
-  app.post("/api/merge", upload.array("files"), async (req, res) => {
+  app.post("/api/merge", upload.array("files"), async (req: Request, res: Response) => {
     try {
       const files = req.files as Express.Multer.File[];
       const pageSelectionRaw = req.body.pageSelection;
@@ -286,7 +273,7 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
   });
 
   // Split (Dividir) - Retorna um ZIP com todas as páginas
-  app.post("/api/split", upload.single("file"), async (req, res) => {
+  app.post("/api/split", upload.single("file"), async (req: Request, res: Response) => {
     try {
       if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
 
@@ -331,7 +318,7 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
   });
 
   // Converter - MODO HACKER V10.0 (PDF <-> DOCX/XLSX/CSV/XML)
-  app.post("/api/convert", upload.single("file"), async (req, res) => {
+  app.post("/api/convert", upload.single("file"), async (req: Request, res: Response) => {
     try {
       if (!req.file) {
         console.error("[V10.0] Erro: Nenhum arquivo recebido na rota convert");
@@ -521,7 +508,7 @@ app.post("/api/optimize", upload.single("file"), async (req, res) => {
   });
 
 // Catch-all para API para depuração
-app.all("/api/*", (req, res) => {
+app.all("/api/*", (req: Request, res: Response) => {
   console.log(`[PDFTurbo] Rota não encontrada: ${req.method} ${req.path}`);
   res.status(404).json({ 
     error: "Rota da API não encontrada", 
@@ -538,7 +525,7 @@ app.all("/api/*", (req, res) => {
 });
 
 // Global Error Handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
   console.error("[PDFTurbo] Erro global:", err);
   res.status(500).json({ error: "Erro interno no servidor: " + (err.message || "Erro desconhecido") });
 });
@@ -556,7 +543,7 @@ async function startServer() {
   } else if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (req: Request, res: Response) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
