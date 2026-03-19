@@ -7,7 +7,7 @@ import sharp from "sharp";
 import JSZip from "jszip";
 
 import zlib from "zlib";
-import { PDFParse } from 'pdf-parse';
+import * as pdf from 'pdf-parse';
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import ExcelJS from "exceljs";
 import { Builder } from "xml2js";
@@ -20,10 +20,15 @@ async function startServer() {
   const storage = multer.memoryStorage();
   const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 100 * 1024 * 1024 }, // Aceita arquivos de até 100MB para processamento
+    limits: { fileSize: 100 * 1024 * 1024 }, // Aceita arquivos de até 100MB
   });
 
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  
+  // Habilitar CORS para evitar problemas de conectividade
+  const cors = (await import('cors')).default;
+  app.use(cors());
 
   // --- Endpoints ---
 
@@ -344,9 +349,7 @@ async function startServer() {
         console.log("[V10.0] Extraindo texto de PDF...");
         let text = "";
         try {
-          const parser = new PDFParse({ data: req.file.buffer });
-          const data = await parser.getText();
-          await parser.destroy();
+          const data = await (pdf as any).default(req.file.buffer);
           text = data.text || "";
           console.log(`[V10.0] Texto extraído (pdf-parse): ${text.length} caracteres`);
         } catch (pdfErr: any) {
@@ -524,7 +527,12 @@ async function startServer() {
   }
 
   app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`[PDFTurbo] Servidor rodando na porta ${PORT}`);
+    console.log(`[PDFTurbo] Rotas registradas:`);
+    console.log(` - POST /api/optimize`);
+    console.log(` - POST /api/merge`);
+    console.log(` - POST /api/split`);
+    console.log(` - POST /api/convert`);
   });
 }
 
